@@ -3,6 +3,72 @@ from __future__ import annotations
 
 from typing import Any
 
+
+def _alarm_judgment_seed() -> list[dict[str, Any]]:
+    """告警判定历史：alert-1 ~ alert-29。
+
+    下一条判定自然编号为 alert-30；历史来源只用 JOBO-0001/JOBO-0003，
+    JOBO-0002 的首次判定留给实时评估链路生成，保证同一来源只追加、不重复。
+    """
+    rows: list[dict[str, Any]] = []
+    for seq in range(1, 30):
+        occurred = f"2026-09-{seq:02d}T10:00:00"
+        source = "JOBO-0001" if seq % 2 else "JOBO-0003"
+        if seq % 3 == 0:
+            hits = ["ALAR-0003"]
+            effective, level = "ALAR-0003", "P3"
+            condition, silence = "latency_p99>500ms", "900秒"
+            value = f"{600 + seq}ms"
+            escalation = "无升级：仅ALAR-0003(P3)命中，直接生效"
+            suppression = "可通知：静默期外命中，静默期900秒自本次判定起生效"
+            conflict = "ALAR-0001草稿不参与判定；仅ALAR-0003一条启用规则命中，无冲突"
+            notifier = "ALAR-0003"
+        elif seq == 25:
+            hits = ["ALAR-0002", "ALAR-0003"]
+            effective, level = "ALAR-0002", "P1"
+            condition, silence = "latency_p99>800ms", "600秒"
+            value = f"{880 + seq}ms"
+            escalation = "ALAR-0002(P1)静默期内（剩余512秒），升级为ALAR-0003(P3)通知"
+            suppression = "升级通知：ALAR-0002静默中只记录，由ALAR-0003代发一次"
+            conflict = "ALAR-0001草稿不参与判定；ALAR-0002、ALAR-0003同时命中，按告警级别优先级判定唯一生效规则"
+            notifier = "ALAR-0003"
+        else:
+            hits = ["ALAR-0002", "ALAR-0003"]
+            effective, level = "ALAR-0002", "P1"
+            condition, silence = "latency_p99>800ms", "600秒"
+            value = f"{880 + seq}ms"
+            escalation = "无升级：ALAR-0002(P1)优先级最高，直接生效"
+            if seq % 5 == 0:
+                suppression = "静默期内，只记录不通知"
+                notifier = ""
+            else:
+                suppression = "可通知：静默期外命中，静默期600秒自本次判定起生效"
+                notifier = "ALAR-0002"
+            conflict = "ALAR-0001草稿不参与判定；ALAR-0002、ALAR-0003同时命中，按告警级别优先级判定唯一生效规则"
+        rows.append({
+            "id": seq,
+            "status": "已判定",
+            "pending": suppression.startswith(("可通知", "升级通知")),
+            "abnormal": False,
+            "判定编号": f"alert-{seq}",
+            "监控指标": "latency_p99",
+            "指标值": value,
+            "来源标识": source,
+            "命中规则": hits,
+            "冲突校验": conflict,
+            "唯一生效规则": effective,
+            "通知规则": notifier,
+            "告警级别": level,
+            "告警条件": condition,
+            "静默周期": silence,
+            "升级原因": escalation,
+            "通知抑制结果": suppression,
+            "判定时间": occurred,
+            "规则状态": "已启用",
+        })
+    return rows
+
+
 SEED_ROWS: dict[str, list[dict[str, Any]]] = {
     "streamin": [{'id': 1,
   'status': '草稿',
@@ -477,37 +543,44 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
   'pending': True,
   'abnormal': False,
   '规则编号': 'ALAR-0001',
-  '监控指标': '流告警规则样例1',
-  '告警条件': '流告警规则样例1',
-  '告警级别': '流告警规则样例1',
-  '通知渠道': '流告警规则样例1',
-  '静默周期': '流告警规则样例1',
-  '升级策略': '流告警规则样例1',
-  '规则状态': '流告警规则样例1'},
+  '监控指标': 'latency_p99',
+  '告警条件': 'latency_p99>300ms',
+  '告警级别': 'P2',
+  '通知渠道': '邮件',
+  '静默周期': '300秒',
+  '升级策略': '静默升级',
+  '规则状态': '草稿',
+  '最后通知时间': '',
+  '最近判定编号': ''},
  {'id': 2,
   'status': '已启用',
   'pending': True,
   'abnormal': True,
   '规则编号': 'ALAR-0002',
-  '监控指标': '流告警规则样例2',
-  '告警条件': '流告警规则样例2',
-  '告警级别': '流告警规则样例2',
-  '通知渠道': '流告警规则样例2',
-  '静默周期': '流告警规则样例2',
-  '升级策略': '流告警规则样例2',
-  '规则状态': '流告警规则样例2'},
+  '监控指标': 'latency_p99',
+  '告警条件': 'latency_p99>800ms',
+  '告警级别': 'P1',
+  '通知渠道': '短信+电话',
+  '静默周期': '600秒',
+  '升级策略': '静默升级',
+  '规则状态': '已启用',
+  '最后通知时间': '2026-09-29T10:00:00',
+  '最近判定编号': 'alert-29'},
  {'id': 3,
-  'status': '已暂停',
-  'pending': False,
+  'status': '已启用',
+  'pending': True,
   'abnormal': False,
   '规则编号': 'ALAR-0003',
-  '监控指标': '流告警规则样例3',
-  '告警条件': '流告警规则样例3',
-  '告警级别': '流告警规则样例3',
-  '通知渠道': '流告警规则样例3',
-  '静默周期': '流告警规则样例3',
-  '升级策略': '流告警规则样例3',
-  '规则状态': '流告警规则样例3'}],
+  '监控指标': 'latency_p99',
+  '告警条件': 'latency_p99>500ms',
+  '告警级别': 'P3',
+  '通知渠道': '邮件',
+  '静默周期': '900秒',
+  '升级策略': '不升级',
+  '规则状态': '已启用',
+  '最后通知时间': '2026-09-27T10:00:00',
+  '最近判定编号': 'alert-27'}],
+    "alarmjudg": _alarm_judgment_seed(),
     "udf": [{'id': 1,
   'status': '草稿',
   'pending': True,
